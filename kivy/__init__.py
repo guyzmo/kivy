@@ -32,7 +32,8 @@ __version__ = '1.8.0-dev'
 
 import sys
 import shutil
-from getopt import getopt, GetoptError
+import docopt
+import kivy.usage
 from os import environ, mkdir
 from os.path import dirname, join, basename, exists, expanduser
 from kivy.logger import Logger, LOG_LEVELS
@@ -142,41 +143,6 @@ def kivy_register_post_configuration(callback):
     __kivy_post_configuration.append(callback)
 
 
-def kivy_usage():
-    '''Kivy Usage: %s [OPTION...]::
-
-        -h, --help
-            Prints this help message.
-        -d, --debug
-            Shows debug log
-        -a, --auto-fullscreen
-            Force 'auto' fullscreen mode (no resolution change).
-            Uses your display's resolution. This is most likely what you want.
-        -c, --config section:key[:value]
-            Set a custom [section] key=value in the configuration object
-        -f, --fullscreen
-            Force running in fullscreen mode.
-        -k, --fake-fullscreen
-            Force 'fake' fullscreen mode (no window border/decoration).
-            Uses the resolution specified by width and height in your config.
-        -w, --windowed
-            Force running in a window.
-        -p, --provider id:provider[,options]
-            Add an input provider (eg: ccvtable1:tuio,192.168.0.1:3333).
-        -m mod, --module=mod
-            Activate a module (use "list" to get a list of available modules).
-        -r, --rotation
-            Rotate the window's contents (0, 90, 180, 270).
-        -s, --save
-            Save current Kivy configuration.
-        --size=640x480
-            Size of window geometry.
-        --dpi=96
-            Manually overload the Window DPI (for testing only.)
-    '''
-    print kivy_usage.__doc__ % (basename(sys.argv[0]))
-
-
 # Start !
 if 'vim' in globals():
     Logger.setLevel(level=LOG_LEVELS.get('critical'))
@@ -214,7 +180,7 @@ for option in kivy_options:
 kivy_base_dir = dirname(sys.modules[__name__].__file__)
 #: Kivy modules directory
 kivy_modules_dir = environ.get('KIVY_MODULES_DIR',
-                               join(kivy_base_dir, 'modules'))
+                            join(kivy_base_dir, 'modules'))
 #: Kivy extension directory
 kivy_exts_dir = environ.get('KIVY_EXTS_DIR',
                             join(kivy_base_dir, 'extensions'))
@@ -284,82 +250,69 @@ if not environ.get('KIVY_DOC_INCLUDE'):
         sys_argv = sys.argv
         sys.argv = sys.argv[:1]
 
-        try:
-            opts, args = getopt(sys_argv[1:], 'hp:fkawFem:sr:dc:',
-                ['help', 'fullscreen', 'windowed', 'fps', 'event',
-                 'module=', 'save', 'fake-fullscreen', 'auto-fullscreen',
-                 'display=', 'size=', 'rotate=', 'config=', 'debug',
-                 'dpi='])
+        options = docopt.docopt(kivy.usage.__doc__)
 
-        except GetoptError, err:
-            Logger.error('Core: %s' % str(err))
-            kivy_usage()
-            sys.exit(2)
-
-        # set argv to the non-read args
-        sys.argv = sys_argv[0:1] + args
     else:
-        opts = []
-        args = []
+        sys_argv = sys.argv
+        sys.argv = ['']
+        options = docopt.docopt(kivy.usage.__doc__)
+        sys.argv = sys_argv
 
-    need_save = False
-    for opt, arg in opts:
-        if opt in ('-h', '--help'):
-            kivy_usage()
-            sys.exit(0)
-        elif opt in ('-p', '--provider'):
-            try:
-                pid, args = arg.split(':', 1)
-                Config.set('input', pid, args)
-            except ValueError:
-                # when we are doing an executable on macosx with pyinstaller,
-                # they are passing information with -p. so it will conflict with
-                # our current -p option. since the format is not the same, just
-                # avoid it.
-                pass
-        elif opt in ('-a', '--auto-fullscreen'):
-            Config.set('graphics', 'fullscreen', 'auto')
-        elif opt in ('-c', '--config'):
-            l = arg.split(':', 2)
-            if len(l) == 2:
-                Config.set(l[0], l[1], '')
-            elif len(l) == 3:
-                Config.set(l[0], l[1], l[2])
-            else:
-                raise Exception('Invalid --config value')
-            if l[0] == 'kivy' and l[1] == 'log_level':
-                level = LOG_LEVELS.get(Config.get('kivy', 'log_level'))
-                Logger.setLevel(level=level)
-        elif opt in ('-k', '--fake-fullscreen'):
-            Config.set('graphics', 'fullscreen', 'fake')
-        elif opt in ('-f', '--fullscreen'):
-            Config.set('graphics', 'fullscreen', '1')
-        elif opt in ('-w', '--windowed'):
-            Config.set('graphics', 'fullscreen', '0')
-        elif opt in ('--size', ):
-            w, h = str(arg).split('x')
-            Config.set('graphics', 'width', w)
-            Config.set('graphics', 'height', h)
-        elif opt in ('--display', ):
-            Config.set('graphics', 'display', str(arg))
-        elif opt in ('-m', '--module'):
-            if str(arg) == 'list':
-                from kivy.modules import Modules
-                Modules.usage_list()
-                sys.exit(0)
-            args = arg.split(':', 1)
-            if len(args) == 1:
-                args += ['']
-            Config.set('modules', args[0], args[1])
-        elif opt in ('-s', '--save'):
-            need_save = True
-        elif opt in ('-r', '--rotation'):
-            Config.set('graphics', 'rotation', arg)
-        elif opt in ('-d', '--debug'):
-            level = LOG_LEVELS.get('debug')
+    if options['--debug']:
+        level = LOG_LEVELS.get('debug')
+        Logger.setLevel(level=level)
+    if options['--auto-fullscreen']:
+        Config.set('graphics', 'fullscreen', 'auto')
+    if options['--config']:
+        l = options['--config'].split(':', 2)
+        if len(l) == 2:
+            Config.set(l[0], l[1], '')
+        elif len(l) == 3:
+            Config.set(l[0], l[1], l[2])
+        else:
+            raise Exception('Invalid --config value')
+        if l[0] == 'kivy' and l[1] == 'log_level':
+            level = LOG_LEVELS.get(Config.get('kivy', 'log_level'))
             Logger.setLevel(level=level)
-        elif opt == '--dpi':
-            environ['KIVY_DPI'] = arg
+    if options['--fullscreen']:
+            Config.set('graphics', 'fullscreen', '1')
+    if options['--fake-fullscreen']:
+            Config.set('graphics', 'fullscreen', 'fake')
+    if options['--windowed']:
+            Config.set('graphics', 'fullscreen', '0')
+    if options['--provider']:
+        try:
+            pid, args = options['--provider'](':', 1)
+            Config.set('input', pid, args)
+        except ValueError:
+            # when we are doing an executable on macosx with pyinstaller,
+            # they are passing information with -p. so it will conflict with
+            # our current -p option. since the format is not the same, just
+            # avoid it.
+            pass
+    if options['--module']:
+        if str(options['--module']) == 'list':
+            from kivy.modules import Modules
+            Modules.usage_list()
+            sys.exit(0)
+        args = options['--module'].split(':', 1)
+        if len(args) == 1:
+            args += ['']
+        Config.set('modules', args[0], args[1])
+    if options['--rotation']:
+        Config.set('graphics', 'rotation', options['--rotation'])
+    if options['--save']:
+        need_save = True
+    else:
+        need_save = False
+    if options['--size']:
+        w, h = str(options['--size']).split('x')
+        Config.set('graphics', 'width', w)
+        Config.set('graphics', 'height', h)
+    if options['--dpi']:
+        environ['KIVY_DPI'] = options['--dpi']
+    if options['--display']:
+        Config.set('graphics', 'display', str(options['--display']))
 
     if need_save and 'KIVY_NO_CONFIG' not in environ:
         try:
@@ -367,7 +320,7 @@ if not environ.get('KIVY_DOC_INCLUDE'):
                 Config.write(fd)
         except Exception, e:
             Logger.exception('Core: error while saving default'
-                             'configuration file:', str(e))
+                            'configuration file:', str(e))
         Logger.info('Core: Kivy configuration saved.')
         sys.exit(0)
 
